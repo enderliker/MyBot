@@ -7,42 +7,23 @@ import { Readable } from 'stream';
 const localBin = join(__dirname, '..', '..', 'bin', 'yt-dlp');
 const YTDLP_BIN = existsSync(localBin) ? localBin : 'yt-dlp';
 
-const FALLBACK_INSTANCES = [
-  'yewtu.be',
-  'invidious.nerdvpn.de',
-  'invidious.flokinet.to',
-  'invidious.projectsegfau.lt',
-  'invidious.privacydev.net'
-];
-
-async function getHealthyInvidiousInstance(): Promise<string> {
-  try {
-    const res = await fetch('https://api.invidious.io/instances.json');
-    if (!res.ok) throw new Error('Status not OK');
-    const data = await res.json() as [string, any][];
-    
-    const healthy = data
-      .filter(([name, info]) => {
-        return info.type === 'https' && 
-               info.monitor && 
-               info.monitor.last_status === 200 && 
-               info.monitor.down === false;
-      })
-      .map(([name]) => name);
-
-    if (healthy.length > 0) {
-      return healthy[Math.floor(Math.random() * healthy.length)];
-    }
-  } catch (err) {
-    console.warn(`[Invidious] Failed to fetch public instances:`, err);
-  }
-  return FALLBACK_INSTANCES[Math.floor(Math.random() * FALLBACK_INSTANCES.length)];
-}
-
 export interface SearchOptions {
   targetTitle?: string;
   targetArtist?: string;
   targetDuration?: number;
+}
+
+function parseDuration(text?: string): number {
+  if (!text) return 0;
+  const parts = text.split(':').map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+function parseViews(text?: string): number {
+  if (!text) return 0;
+  return parseInt(text.replace(/[^0-9]/g, '')) || 0;
 }
 
 function selectBestResult(results: any[], rawQuery: string, options?: SearchOptions): any {
@@ -129,6 +110,53 @@ function selectBestResult(results: any[], rawQuery: string, options?: SearchOpti
   return bestResult;
 }
 
+async function scrapeSearch(query: string): Promise<any[]> {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9'
+    }
+  });
+  
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status}`);
+  }
+
+  const html = await res.text();
+  const match = html.match(/ytInitialData\s*=\s*({.+?});/);
+  if (!match) {
+    throw new Error('Could not parse search results');
+  }
+
+  const data = JSON.parse(match[1]);
+  const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+  if (!contents) {
+    throw new Error('No contents found in search page');
+  }
+
+  const results: any[] = [];
+  for (const section of contents) {
+    const itemSection = section.itemSectionRenderer;
+    if (!itemSection || !itemSection.contents) continue;
+    for (const item of itemSection.contents) {
+      const video = item.videoRenderer;
+      if (video) {
+        results.push({
+          title: video.title?.runs?.[0]?.text || 'Unknown Title',
+          videoId: video.videoId,
+          url: `https://music.youtube.com/watch?v=${video.videoId}`,
+          uploader: video.ownerText?.runs?.[0]?.text || 'Unknown Artist',
+          duration: parseDuration(video.lengthText?.simpleText),
+          view_count: parseViews(video.viewCountText?.simpleText),
+          thumbnail: video.thumbnail?.thumbnails?.[0]?.url
+        });
+      }
+    }
+  }
+  return results;
+}
+
 export async function searchYtdl(query: string, requester: string, options?: SearchOptions): Promise<Track> {
   const isUrl = query.startsWith('http://') || query.startsWith('https://');
   
@@ -136,18 +164,13 @@ export async function searchYtdl(query: string, requester: string, options?: Sea
     let playUrl = query;
     const ytMatch = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
     if (ytMatch) {
-      const videoId = ytMatch[1];
-      const instance = await getHealthyInvidiousInstance();
-      playUrl = `https://${instance}/watch?v=${videoId}`;
-      console.log(`[ytdlp] Direct YouTube URL converted to Invidious URL: ${playUrl}`);
+      playUrl = `https://music.youtube.com/watch?v=${ytMatch[1]}`;
     }
 
     return new Promise((resolve, reject) => {
       const args = [
         '--dump-json',
         '--no-playlist',
-        '--js-runtimes', 'node',
-        '--extractor-args', 'youtube:player_client=ios,web',
         '--',
         playUrl
       ];
@@ -188,118 +211,39 @@ export async function searchYtdl(query: string, requester: string, options?: Sea
     });
   }
 
-  const instance = await getHealthyInvidiousInstance();
-  console.log(`[ytdlp] Querying Invidious search API: ${instance}`);
-
-  try {
-    const searchUrl = `https://${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`;
-    const response = await fetch(searchUrl);
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    const resultsData = await response.json() as any[];
-
-    if (!resultsData || resultsData.length === 0) {
-      throw new Error('No results returned from Invidious API');
-    }
-
-    const mappedResults = resultsData.map(res => ({
-      title: res.title,
-      url: `https://${instance}/watch?v=${res.videoId}`,
-      duration: res.lengthSeconds,
-      view_count: res.viewCount,
-      uploader: res.author,
-      thumbnail: res.videoThumbnails?.[0]?.url
-    }));
-
-    const bestMatch = selectBestResult(mappedResults, query, options);
-    console.log(`[ytdlp] Invidious search resolved to: "${bestMatch.title}" (${bestMatch.url})`);
-
-    return {
-      title: bestMatch.title,
-      url: bestMatch.url,
-      duration: bestMatch.duration,
-      requester,
-      artist: bestMatch.uploader,
-      thumbnail: bestMatch.thumbnail
-    };
-  } catch (err: any) {
-    console.warn(`[ytdlp] Invidious search failed: ${err.message}. Falling back to standard ytsearch.`);
-    
-    return new Promise((resolve, reject) => {
-      const args = [
-        '--dump-json',
-        '--no-playlist',
-        '--js-runtimes', 'node',
-        '--extractor-args', 'youtube:player_client=ios,web',
-        '--',
-        `ytsearch5:${query}`
-      ];
-
-      console.log(`[ytdlp] Spawning fallback search process: ${YTDLP_BIN} ${args.join(' ')}`);
-      const child = spawn(YTDLP_BIN, args);
-      let stdoutData = '';
-      let stderrData = '';
-
-      child.stdout.on('data', (data) => {
-        stdoutData += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        stderrData += data.toString();
-      });
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          console.error(`[ytdlp] Fallback search process exited with code ${code}. Error: ${stderrData}`);
-          reject(new Error(`yt-dlp search failed with code ${code}: ${stderrData}`));
-          return;
-        }
-
-        try {
-          const lines = stdoutData.split('\n').filter(line => line.trim() !== '');
-          if (lines.length === 0) {
-            reject(new Error('No search results found.'));
-            return;
-          }
-
-          const results = lines.map(line => JSON.parse(line));
-          let bestMatch = results[0];
-          
-          if (results.length > 1) {
-            bestMatch = selectBestResult(results, query, options);
-          }
-
-          console.log(`[ytdlp] Fallback search resolved to: "${bestMatch.title}" (${bestMatch.webpage_url || bestMatch.url})`);
-          resolve({
-            title: bestMatch.title,
-            url: bestMatch.webpage_url || bestMatch.url,
-            duration: Math.round(bestMatch.duration || 0),
-            requester,
-            artist: bestMatch.uploader,
-            thumbnail: bestMatch.thumbnail || (bestMatch.thumbnails && bestMatch.thumbnails[0]?.url)
-          });
-        } catch (err) {
-          reject(new Error(`Failed to parse yt-dlp metadata: ${err}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        console.error(`[ytdlp] Spawn error during fallback search:`, err);
-        reject(err);
-      });
-    });
+  console.log(`[ytdlp] Scraping YouTube search page HTML for: "${query}"`);
+  const scrapedResults = await scrapeSearch(query);
+  if (scrapedResults.length === 0) {
+    throw new Error('No search results found.');
   }
+
+  const bestMatch = selectBestResult(scrapedResults, query, options);
+  console.log(`[ytdlp] Search resolved to: "${bestMatch.title}" (${bestMatch.url})`);
+
+  return {
+    title: bestMatch.title,
+    url: bestMatch.url,
+    duration: bestMatch.duration,
+    requester,
+    artist: bestMatch.uploader,
+    thumbnail: bestMatch.thumbnail
+  };
 }
 
-export function getAudioStream(url: string): Readable {
-  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist --js-runtimes node --extractor-args youtube:player_client=ios,web -- ${url}`);
+export async function getAudioStream(url: string): Promise<Readable> {
+  let playUrl = url;
+  const ytMatch = url.match(/(?:watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) {
+    playUrl = `https://music.youtube.com/watch?v=${ytMatch[1]}`;
+  }
+
+  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist -- ${playUrl}`);
   const child = spawn(YTDLP_BIN, [
     '-o', '-',
     '-f', 'bestaudio',
     '--no-playlist',
-    '--js-runtimes', 'node',
-    '--extractor-args', 'youtube:player_client=ios,web',
     '--',
-    url
+    playUrl
   ]);
 
   child.on('error', (err) => {

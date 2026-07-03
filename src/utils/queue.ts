@@ -104,7 +104,7 @@ export class GuildQueue {
       }
       
       console.log(`[Queue] Fetching audio stream for: "${currentTrack.title}" (${playUrl})`);
-      const stream = getAudioStream(playUrl);
+      const stream = await getAudioStream(playUrl);
       
       console.log(`[Queue] Creating audio resource...`);
       const resource = createAudioResource(stream, {
