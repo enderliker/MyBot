@@ -108,6 +108,7 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
       args.push(`ytsearch5:${query}`);
     }
 
+    console.log(`[ytdlp] Spawning search process: ${YTDLP_BIN} ${args.join(' ')}`);
     const child = spawn(YTDLP_BIN, args);
     let stdoutData = '';
     let stderrData = '';
@@ -122,6 +123,7 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
 
     child.on('close', (code) => {
       if (code !== 0) {
+        console.error(`[ytdlp] Search process exited with code ${code}. Error: ${stderrData}`);
         reject(new Error(`yt-dlp search failed with code ${code}: ${stderrData}`));
         return;
       }
@@ -140,6 +142,7 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
           bestMatch = selectBestResult(results, query, options);
         }
 
+        console.log(`[ytdlp] Search resolved to: "${bestMatch.title}" (${bestMatch.webpage_url || bestMatch.url})`);
         resolve({
           title: bestMatch.title,
           url: bestMatch.webpage_url || bestMatch.url,
@@ -154,12 +157,14 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
     });
 
     child.on('error', (err) => {
+      console.error(`[ytdlp] Spawn error during search:`, err);
       reject(err);
     });
   });
 }
 
 export function getAudioStream(url: string): Readable {
+  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist -- ${url}`);
   const child = spawn(YTDLP_BIN, [
     '-o', '-',
     '-f', 'bestaudio',
@@ -169,7 +174,11 @@ export function getAudioStream(url: string): Readable {
   ]);
 
   child.on('error', (err) => {
-    console.error('Failed to spawn yt-dlp audio stream process:', err);
+    console.error('[ytdlp] Failed to spawn yt-dlp audio stream process:', err);
+  });
+
+  child.stderr.on('data', (data) => {
+    console.log(`[ytdlp stream stderr] ${data.toString().trim()}`);
   });
 
   return child.stdout;
