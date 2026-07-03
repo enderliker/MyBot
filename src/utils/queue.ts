@@ -94,7 +94,7 @@ export class GuildQueue {
       let playUrl = currentTrack.url;
       if (isSpotifyUrl(playUrl)) {
         console.log(`[Queue] Resolving Spotify metadata query on-the-fly...`);
-        const query = `${currentTrack.title} ${currentTrack.artist || ''}`;
+        const query = `${currentTrack.title} ${currentTrack.artist && currentTrack.artist !== 'Unknown' ? currentTrack.artist : ''}`;
         const ytTrack = await searchYtdl(query, currentTrack.requester, {
           targetTitle: currentTrack.title,
           targetArtist: currentTrack.artist,

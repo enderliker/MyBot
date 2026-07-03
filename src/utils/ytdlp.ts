@@ -237,11 +237,13 @@ export async function getAudioStream(url: string): Promise<Readable> {
     playUrl = `https://music.youtube.com/watch?v=${ytMatch[1]}`;
   }
 
-  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist -- ${playUrl}`);
+  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist --js-runtimes node --extractor-args youtube:player_client=ios,web -- ${playUrl}`);
   const child = spawn(YTDLP_BIN, [
     '-o', '-',
     '-f', 'bestaudio',
     '--no-playlist',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=ios,web',
     '--',
     playUrl
   ]);
