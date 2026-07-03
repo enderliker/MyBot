@@ -1,7 +1,6 @@
 import { Collection, Events, Interaction } from 'discord.js';
 import { Command } from '../types/command';
 
-// We will pass the commands collection down from the client or import it
 export default {
   name: Events.InteractionCreate,
   async execute(interaction: Interaction, commands: Collection<string, Command>) {
