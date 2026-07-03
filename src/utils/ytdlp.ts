@@ -100,7 +100,13 @@ function selectBestResult(results: any[], rawQuery: string, options?: SearchOpti
 export function searchYtdl(query: string, requester: string, options?: SearchOptions): Promise<Track> {
   return new Promise((resolve, reject) => {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
-    const args = ['--dump-json', '--no-playlist', '--'];
+    const args = [
+      '--dump-json', 
+      '--no-playlist', 
+      '--js-runtimes', 'node',
+      '--extractor-args', 'youtube:player_client=ios,web',
+      '--'
+    ];
     
     if (isUrl) {
       args.push(query);
@@ -164,11 +170,13 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
 }
 
 export function getAudioStream(url: string): Readable {
-  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist -- ${url}`);
+  console.log(`[ytdlp] Spawning audio stream process: ${YTDLP_BIN} -o - -f bestaudio --no-playlist --js-runtimes node --extractor-args youtube:player_client=ios,web -- ${url}`);
   const child = spawn(YTDLP_BIN, [
     '-o', '-',
     '-f', 'bestaudio',
     '--no-playlist',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=ios,web',
     '--',
     url
   ]);

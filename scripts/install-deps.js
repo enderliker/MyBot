@@ -6,7 +6,7 @@ const fs = require('fs');
 
 const binDir = join(__dirname, '..', 'bin');
 const ytdlpPath = join(binDir, 'yt-dlp');
-const ytdlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+const ytdlpUrl = 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp';
 
 function isAlreadyInstalled() {
   try {
@@ -49,23 +49,25 @@ async function main() {
     return;
   }
 
-  if (existsSync(ytdlpPath)) {
-    console.log('yt-dlp local binary already exists, skipping download.');
-    return;
-  }
-
   if (!existsSync(binDir)) {
     mkdirSync(binDir, { recursive: true });
   }
 
-  console.log('Downloading yt-dlp binary...');
+  console.log('Downloading latest yt-dlp nightly binary...');
   try {
+    if (existsSync(ytdlpPath)) {
+      try {
+        fs.unlinkSync(ytdlpPath);
+      } catch {}
+    }
     await downloadFile(ytdlpUrl, ytdlpPath);
     chmodSync(ytdlpPath, 0o755);
-    console.log(`yt-dlp downloaded to ${ytdlpPath}`);
+    console.log(`yt-dlp updated successfully at ${ytdlpPath}`);
   } catch (err) {
     console.error('Failed to download yt-dlp:', err.message);
-    process.exit(1);
+    if (!existsSync(ytdlpPath)) {
+      process.exit(1);
+    }
   }
 }
 
