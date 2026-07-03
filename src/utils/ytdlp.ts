@@ -95,7 +95,7 @@ function selectBestResult(results: any[], rawQuery: string, options?: SearchOpti
 export function searchYtdl(query: string, requester: string, options?: SearchOptions): Promise<Track> {
   return new Promise((resolve, reject) => {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
-    const args = ['--dump-json', '--no-playlist'];
+    const args = ['--dump-json', '--no-playlist', '--'];
     
     if (isUrl) {
       args.push(query);
@@ -159,8 +159,13 @@ export function getAudioStream(url: string): Readable {
     '-o', '-',
     '-f', 'bestaudio',
     '--no-playlist',
+    '--',
     url
   ]);
+
+  child.on('error', (err) => {
+    console.error('Failed to spawn yt-dlp audio stream process:', err);
+  });
 
   return child.stdout;
 }

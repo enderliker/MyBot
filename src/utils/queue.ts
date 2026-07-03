@@ -3,10 +3,12 @@ import {
   AudioPlayerStatus, 
   createAudioPlayer, 
   createAudioResource, 
+  entersState,
   StreamType, 
-  VoiceConnection 
+  VoiceConnection,
+  VoiceConnectionStatus
 } from '@discordjs/voice';
-import { Collection, TextBasedChannel } from 'discord.js';
+import { Collection } from 'discord.js';
 import { Track } from '../types/music';
 import { getAudioStream, searchYtdl } from './ytdlp';
 import { isSpotifyUrl } from './spotify';
@@ -34,6 +36,17 @@ export class GuildQueue {
     this.player.on('error', (error) => {
       this.textChannel.send(`Error playing track: ${error.message}`).catch(() => {});
       this.playNext();
+    });
+
+    this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      try {
+        await Promise.race([
+          entersState(this.connection, VoiceConnectionStatus.Signalling, 5000),
+          entersState(this.connection, VoiceConnectionStatus.Connecting, 5000),
+        ]);
+      } catch {
+        this.destroy();
+      }
     });
   }
 

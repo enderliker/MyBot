@@ -98,7 +98,7 @@ export async function resolveSpotifyUrl(url: string): Promise<SpotifyResolvedTra
     let tracks: SpotifyResolvedTrack[] = [];
     let nextUrl: string | null = `https://api.spotify.com/v1/playlists/${id}/tracks?limit=100`;
 
-    while (nextUrl) {
+    while (nextUrl && tracks.length < 200) {
       const response = await fetch(nextUrl, { headers });
       if (!response.ok) throw new Error('Failed to fetch Spotify playlist tracks');
       const data = await response.json() as any;
@@ -112,6 +112,7 @@ export async function resolveSpotifyUrl(url: string): Promise<SpotifyResolvedTra
           url: item.track.external_urls?.spotify || '',
           thumbnail: item.track.album?.images?.[0]?.url,
         });
+        if (tracks.length >= 200) break;
       }
       nextUrl = data.next;
     }
@@ -127,7 +128,7 @@ export async function resolveSpotifyUrl(url: string): Promise<SpotifyResolvedTra
     let tracks: SpotifyResolvedTrack[] = [];
     let nextUrl: string | null = `https://api.spotify.com/v1/albums/${id}/tracks?limit=100`;
 
-    while (nextUrl) {
+    while (nextUrl && tracks.length < 200) {
       const response = await fetch(nextUrl, { headers });
       if (!response.ok) throw new Error('Failed to fetch Spotify album tracks');
       const data = await response.json() as any;
@@ -140,6 +141,7 @@ export async function resolveSpotifyUrl(url: string): Promise<SpotifyResolvedTra
           url: item.external_urls?.spotify || '',
           thumbnail: albumThumbnail,
         });
+        if (tracks.length >= 200) break;
       }
       nextUrl = data.next;
     }
