@@ -2,14 +2,26 @@ import { Client, Collection, Events, GatewayIntentBits, REST, Routes } from 'dis
 import { config } from './config';
 import { Command } from './types/command';
 import { ping } from './commands/ping';
+import { play } from './commands/play';
+import { skip } from './commands/skip';
+import { stop } from './commands/stop';
+import { pause } from './commands/pause';
+import { resume } from './commands/resume';
+import { queue } from './commands/queue';
 import ready from './events/ready';
 import interactionCreate from './events/interactionCreate';
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
 const commands = new Collection<string, Command>();
 
 commands.set(ping.data.name, ping);
+commands.set(play.data.name, play);
+commands.set(skip.data.name, skip);
+commands.set(stop.data.name, stop);
+commands.set(pause.data.name, pause);
+commands.set(resume.data.name, resume);
+commands.set(queue.data.name, queue);
 
 client.once(Events.ClientReady, (c) => ready.execute(c));
 client.on(Events.InteractionCreate, (interaction) => interactionCreate.execute(interaction, commands));
