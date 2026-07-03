@@ -1,6 +1,11 @@
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { Track } from '../types/music';
 import { Readable } from 'stream';
+
+const localBin = join(__dirname, '..', '..', 'bin', 'yt-dlp');
+const YTDLP_BIN = existsSync(localBin) ? localBin : 'yt-dlp';
 
 export interface SearchOptions {
   targetTitle?: string;
@@ -103,7 +108,7 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
       args.push(`ytsearch5:${query}`);
     }
 
-    const child = spawn('yt-dlp', args);
+    const child = spawn(YTDLP_BIN, args);
     let stdoutData = '';
     let stderrData = '';
 
@@ -155,7 +160,7 @@ export function searchYtdl(query: string, requester: string, options?: SearchOpt
 }
 
 export function getAudioStream(url: string): Readable {
-  const child = spawn('yt-dlp', [
+  const child = spawn(YTDLP_BIN, [
     '-o', '-',
     '-f', 'bestaudio',
     '--no-playlist',
