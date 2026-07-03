@@ -10,6 +10,7 @@ import { resume } from './commands/resume';
 import { queue } from './commands/queue';
 import ready from './events/ready';
 import interactionCreate from './events/interactionCreate';
+import { queues } from './utils/queue';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
@@ -59,5 +60,21 @@ async function start() {
     console.error('Error: Token is missing. Bot cannot start.');
   }
 }
+
+function shutdown() {
+  console.log('Shutting down bot gracefully...');
+  for (const q of queues.values()) {
+    try {
+      q.destroy();
+    } catch (error) {
+      console.error('Error destroying queue on shutdown:', error);
+    }
+  }
+  client.destroy();
+  process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 start();
