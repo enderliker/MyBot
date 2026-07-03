@@ -1,34 +1,51 @@
 import { Client, Collection, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 import { config } from './config';
 import { Command } from './types/command';
-import { ping } from './commands/ping';
-import { play } from './commands/play';
-import { skip } from './commands/skip';
-import { stop } from './commands/stop';
-import { pause } from './commands/pause';
-import { resume } from './commands/resume';
-import { queue } from './commands/queue';
-import ready from './events/ready';
-import interactionCreate from './events/interactionCreate';
 import { queues } from './utils/queue';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-
 const commands = new Collection<string, Command>();
 
-commands.set(ping.data.name, ping);
-commands.set(play.data.name, play);
-commands.set(skip.data.name, skip);
-commands.set(stop.data.name, stop);
-commands.set(pause.data.name, pause);
-commands.set(resume.data.name, resume);
-commands.set(queue.data.name, queue);
+async function loadCommands() {
+  const commandsPath = join(__dirname, 'commands');
+  const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
-client.once(Events.ClientReady, (c) => ready.execute(c));
-client.on(Events.InteractionCreate, (interaction) => interactionCreate.execute(interaction, commands));
+  for (const file of commandFiles) {
+    const filePath = join(commandsPath, file);
+    const mod = await import(filePath);
+    const command: Command = mod[Object.keys(mod)[0]];
+    if (command?.data && typeof command?.execute === 'function') {
+      commands.set(command.data.name, command);
+    } else {
+      console.warn(`Skipping ${file}: missing data or execute export.`);
+    }
+  }
+}
+
+async function loadEvents() {
+  const eventsPath = join(__dirname, 'events');
+  const eventFiles = readdirSync(eventsPath).filter(f => f.endsWith('.js'));
+
+  for (const file of eventFiles) {
+    const filePath = join(eventsPath, file);
+    const mod = await import(filePath);
+    const event = mod.default;
+    if (!event?.name || !event?.execute) {
+      console.warn(`Skipping ${file}: missing name or execute export.`);
+      continue;
+    }
+    if (event.once) {
+      client.once(event.name, (...args: any[]) => event.execute(...args, commands));
+    } else {
+      client.on(event.name, (...args: any[]) => event.execute(...args, commands));
+    }
+  }
+}
 
 async function deployCommands() {
-  const commandsData = Array.from(commands.values()).map(command => command.data.toJSON());
+  const commandsData = Array.from(commands.values()).map(c => c.data.toJSON());
   const rest = new REST({ version: '10' }).setToken(config.token);
 
   try {
@@ -53,12 +70,15 @@ async function deployCommands() {
 }
 
 async function start() {
-  if (config.token) {
-    await deployCommands();
-    await client.login(config.token);
-  } else {
+  if (!config.token) {
     console.error('Error: Token is missing. Bot cannot start.');
+    return;
   }
+
+  await loadCommands();
+  await loadEvents();
+  await deployCommands();
+  await client.login(config.token);
 }
 
 function shutdown() {

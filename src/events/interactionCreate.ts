@@ -3,6 +3,7 @@ import { Command } from '../types/command';
 
 export default {
   name: Events.InteractionCreate,
+  once: false,
   async execute(interaction: Interaction, commands: Collection<string, Command>) {
     if (!interaction.isChatInputCommand()) return;
 
