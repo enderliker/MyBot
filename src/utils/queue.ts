@@ -61,7 +61,11 @@ export class GuildQueue {
       let playUrl = currentTrack.url;
       if (isSpotifyUrl(playUrl)) {
         const query = `${currentTrack.title} ${currentTrack.artist || ''}`;
-        const ytTrack = await searchYtdl(query, currentTrack.requester);
+        const ytTrack = await searchYtdl(query, currentTrack.requester, {
+          targetTitle: currentTrack.title,
+          targetArtist: currentTrack.artist,
+          targetDuration: currentTrack.duration,
+        });
         playUrl = ytTrack.url;
       }
       
